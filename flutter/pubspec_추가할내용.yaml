@@ -1,0 +1,17 @@
+# 기존 pubspec.yaml 에 아래 항목들을 "추가"하세요 (파일 통째로 바꾸지 마세요)
+
+version: 0.0.1+1          # 이미 있는 version 줄을 이렇게 수정
+
+dependencies:
+  supabase_flutter: ^2.8.0
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.0
+
+# 맨 아래(들여쓰기 없이)에 추가
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#0C52D6"
+  adaptive_icon_foreground: "assets/icon/icon_fg.png"

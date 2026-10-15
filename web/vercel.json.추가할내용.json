@@ -1,0 +1,15 @@
+{
+  "rewrites": [
+    { "source": "/lotto", "destination": "/lotto/index.html" },
+    { "source": "/lotto/", "destination": "/lotto/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/lotto/(.*)\\.apk",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+        { "key": "Content-Disposition", "value": "attachment" }
+      ]
+    }
+  ]
+}
