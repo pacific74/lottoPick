@@ -1,7 +1,9 @@
 // 메인 화면: 최신 당첨번호 / 다음 회차 번호 생성 / 당첨번호 통계 / 지난 회차 결과
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'lotto_repository.dart';
 import 'lotto_stats.dart';
@@ -160,13 +162,25 @@ class _LottoHomePageState extends State<LottoHomePage> {
       appBar: AppBar(
         title: const Text('로또픽', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          if (kIsWeb)
+            IconButton(
+              tooltip: '안드로이드 앱 받기',
+              onPressed: _openDownload,
+              icon: const Icon(Icons.android),
+            ),
           IconButton(onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh)),
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'update') UpdateService.check(context, manual: true);
+              if (v == 'update') {
+                if (kIsWeb) {
+                  _openDownload();
+                } else {
+                  UpdateService.check(context, manual: true);
+                }
+              }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'update', child: Text('업데이트 확인')),
+              PopupMenuItem(value: 'update', child: Text(kIsWeb ? '안드로이드 앱 받기' : '업데이트 확인')),
               PopupMenuItem(enabled: false, child: Text('현재 버전 $_version')),
             ],
           ),
@@ -197,6 +211,7 @@ class _LottoHomePageState extends State<LottoHomePage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
         children: [
+          if (kIsWeb) _webAppBanner(),
           _latestCard(),
           _generateCard(),
           _filterCard(),
@@ -205,7 +220,34 @@ class _LottoHomePageState extends State<LottoHomePage> {
           _allNumbersCard(),
           _comboCard(),
           _lastPicksCard(),
+          Padding(
+            padding: const EdgeInsets.only(top: 20),
+            child: Text(
+              _version.isEmpty ? '로또픽' : '로또픽 $_version',
+              textAlign: TextAlign.center,
+              style: _subStyle(context),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  // 웹에서만: 안드로이드 앱 다운로드 안내
+  Future<void> _openDownload() async {
+    await launchUrl(Uri.parse('${updateBaseUrl}download.html'), webOnlyWindowName: '_self');
+  }
+
+  Widget _webAppBanner() {
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: ListTile(
+        leading: const Icon(Icons.android),
+        title: const Text('안드로이드 앱으로 보기'),
+        subtitle: const Text('설치하면 새 버전이 나올 때 자동으로 알려줍니다'),
+        trailing: const Icon(Icons.download),
+        onTap: _openDownload,
       ),
     );
   }
