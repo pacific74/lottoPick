@@ -24,5 +24,6 @@ try {
   console.log('완료');
 } catch (e) {
   console.error('오류:', e.message ?? e);
+  if (e.cause) console.error('원인:', e.cause.code ?? '', e.cause.message ?? e.cause);
   process.exit(1);
 }

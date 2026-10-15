@@ -3,10 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 
 // ---------- Supabase ----------
 export function db() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = (process.env.SUPABASE_URL || '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim().replace(/^["']|["']$/g, '');
   if (!url || !key) {
-    throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다 (.env 확인)');
+    throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 값이 비어 있습니다 (PC는 .env, GitHub는 Secrets 확인)');
+  }
+  if (!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(url)) {
+    throw new Error(`SUPABASE_URL 형식이 이상합니다: "${url.slice(0, 40)}..." → https://프로젝트ID.supabase.co 형태여야 합니다`);
   }
   return createClient(url, key, {
     db: { schema: 'lotto' },

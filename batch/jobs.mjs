@@ -9,7 +9,9 @@ const SETS_PER_METHOD = Number(process.env.SETS_PER_METHOD || 5);
 async function lastSavedRound(sb) {
   const { data, error } = await sb.from('draws')
     .select('round').order('round', { ascending: false }).limit(1);
-  if (error) throw error;
+  if (error) {
+    throw new Error(`[Supabase 연결 실패] ${error.message} — URL/키 값, Data API에 lotto 스키마 노출 여부를 확인하세요`);
+  }
   return data.length ? data[0].round : 0;
 }
 
