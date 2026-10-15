@@ -124,7 +124,8 @@ export async function generate(targetRound, { force = false } = {}) {
 
   if (!force) {
     const { count, error } = await sb.from('picks')
-      .select('id', { count: 'exact', head: true }).eq('target_round', target);
+      .select('id', { count: 'exact', head: true })
+      .eq('target_round', target).eq('source', 'batch'); // 앱에서 만든 번호는 제외
     if (error) throw error;
     if (count > 0) {
       console.log(`[추출] ${target}회 추출번호가 이미 ${count}건 있어 건너뜁니다`);
@@ -147,7 +148,7 @@ export async function generate(targetRound, { force = false } = {}) {
   for (const [method, fn] of Object.entries(METHODS)) {
     for (let i = 0; i < SETS_PER_METHOD; i++) {
       const [n1, n2, n3, n4, n5, n6] = fn(history);
-      rows.push({ target_round: target, n1, n2, n3, n4, n5, n6, method });
+      rows.push({ target_round: target, n1, n2, n3, n4, n5, n6, method, source: 'batch' });
     }
   }
   const { error } = await sb.from('picks').insert(rows);
