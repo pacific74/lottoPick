@@ -1,4 +1,4 @@
-# =====================================================================
+﻿# =====================================================================
 # 로또픽 push + 배포  (push.bat 이 실행)
 #  1) 변경 확인 — 앱(flutter 폴더)이 바뀌었으면 빌드번호 +1 → APK + 웹 빌드
 #  2) lottoPick → GitHub push
@@ -12,7 +12,8 @@
 param([string]$Message = '')
 
 $ErrorActionPreference = 'Stop'
-$Root     = $PSScriptRoot
+# push.bat 이 UTF-8 로 읽어 실행하므로 $PSScriptRoot 대신 LOTTO_ROOT 사용
+$Root     = if ($env:LOTTO_ROOT) { $env:LOTTO_ROOT.TrimEnd('\', '/') } else { $PSScriptRoot }
 $StockEye = if ($env:LOTTO_STOCKEYE) { $env:LOTTO_STOCKEYE } else { 'D:\stockPrj\stockEye' }
 $Dest     = Join-Path $StockEye 'app/web/lotto'
 $Flutter  = Join-Path $Root 'flutter'
