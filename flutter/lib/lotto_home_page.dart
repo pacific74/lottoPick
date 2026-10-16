@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'lotto_engine.dart';
 import 'lotto_repository.dart';
 import 'lotto_stats.dart';
 import 'update_service.dart';
@@ -26,7 +27,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   List<Pick> _lastPicks = []; // 최신 회차 추출번호 (채점 결과)
 
   // 번호 생성
-  String _method = 'random';
+  String _method = 'engine';
   int _setCount = 1;
   bool _generating = false;
 
@@ -153,11 +154,15 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
 
   Future<void> _generate() async {
     setState(() => _generating = true);
+    // 화면이 먼저 '생성 중'으로 바뀌도록 한 프레임 양보
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     final historyDesc = _draws.reversed.toList();
     final made = <Pick>[];
     String? err;
-    for (var i = 0; i < _setCount; i++) {
-      final nums = generateNumbers(_method, historyDesc);
+    final List<List<int>> sets = _method == 'engine'
+        ? generateEngine(_draws).map((g) => g.numbers).toList() // 17가지 조건, 20게임
+        : [for (var i = 0; i < _setCount; i++) generateNumbers(_method, historyDesc)];
+    for (final nums in sets) {
       try {
         made.add(await repo.addPick(nums, _method));
       } catch (e) {
@@ -306,7 +311,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
         const SizedBox(height: 6),
         Text(m.desc, style: _subStyle(context)),
         const SizedBox(height: 10),
-        Row(children: [
+        if (_method != 'engine') Row(children: [
           Expanded(
             child: SegmentedButton<int>(
               segments: const [
@@ -326,14 +331,14 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
           icon: _generating
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.casino_outlined),
-          label: const Text('다음 회차 번호 생성'),
+          label: Text(_method == 'engine' ? '다음 회차 번호 생성 (20게임)' : '다음 회차 번호 생성'),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
         ),
         if (_appPicks.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text('생성한 번호 (${_appPicks.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          for (final p in _appPicks.take(20)) _PickTile(pick: p),
+          for (final p in _appPicks.take(40)) _PickTile(pick: p),
         ],
       ]),
     );

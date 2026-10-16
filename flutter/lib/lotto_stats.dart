@@ -110,6 +110,7 @@ class GenMethod {
 }
 
 const genMethods = <GenMethod>[
+  GenMethod('engine', '엔진', '17가지 조건으로 20게임을 한 번에 만듭니다'),
   GenMethod('random', '랜덤', '완전 무작위로 6개를 뽑습니다'),
   GenMethod('hot', '많이 나온 번호', '최근 100회 자주 나온 번호일수록 잘 뽑힙니다'),
   GenMethod('cold', '안 나온 번호', '오래 안 나온 번호일수록 잘 뽑힙니다'),

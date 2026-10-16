@@ -1,9 +1,11 @@
 // 배치 작업: 수집 / 채점 / 추출
 import {
-  db, fetchWindow, sleep, expectedLatestRound, grade, METHODS,
+  db, fetchWindow, sleep, expectedLatestRound, grade, genRandom,
 } from './lib.mjs';
+import { generate as engineGenerate } from './engine.mjs';
 
-const SETS_PER_METHOD = Number(process.env.SETS_PER_METHOD || 5);
+const ENGINE_GAMES = Number(process.env.ENGINE_GAMES || 20);  // 엔진 게임 수
+const RANDOM_GAMES = Number(process.env.RANDOM_GAMES || 20);  // 비교용 무작위 게임 수 (0 이면 안 만듦)
 
 /** DB에 저장된 마지막 회차 (없으면 0) */
 async function lastSavedRound(sb) {
@@ -144,16 +146,23 @@ export async function generate(targetRound, { force = false } = {}) {
     if (data.length < 1000) break;
   }
 
+  // 엔진(조건 1~17)은 회차 오름차순 데이터를 씀
+  const draws = history.slice().reverse().map((d) => ({
+    round: d.round,
+    numbers: [d.n1, d.n2, d.n3, d.n4, d.n5, d.n6].sort((a, b) => a - b),
+    bonus: d.bonus,
+  }));
   const rows = [];
-  for (const [method, fn] of Object.entries(METHODS)) {
-    for (let i = 0; i < SETS_PER_METHOD; i++) {
-      const [n1, n2, n3, n4, n5, n6] = fn(history);
-      rows.push({ target_round: target, n1, n2, n3, n4, n5, n6, method, source: 'batch' });
-    }
-  }
+  const add = (nums, method) => {
+    const [n1, n2, n3, n4, n5, n6] = nums;
+    rows.push({ target_round: target, n1, n2, n3, n4, n5, n6, method, source: 'batch' });
+  };
+  const { games } = engineGenerate(draws, { games: ENGINE_GAMES });
+  for (const g of games) add(g.nums, 'engine');
+  for (let i = 0; i < RANDOM_GAMES; i++) add(genRandom(), 'random'); // 성적 비교용
   const { error } = await sb.from('picks').insert(rows);
   if (error) throw error;
-  console.log(`[추출] ${target}회 번호 ${rows.length}세트 저장 (방식별 ${SETS_PER_METHOD}세트)`);
+  console.log(`[추출] ${target}회 번호 저장: 엔진 ${games.length}게임 + 비교용 무작위 ${RANDOM_GAMES}게임`);
   return rows;
 }
 
