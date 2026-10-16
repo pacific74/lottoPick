@@ -2,10 +2,15 @@
 import {
   db, fetchWindow, sleep, expectedLatestRound, grade, genRandom,
 } from './lib.mjs';
-import { generate as engineGenerate } from './engine.mjs';
+import { generate as genV1, buildStats } from './engine.mjs';
+import { generateV2 as genV2, buildStatsV2, generateMany } from './engine_v2.mjs';
 
-const ENGINE_GAMES = Number(process.env.ENGINE_GAMES || 20);  // 엔진 게임 수
-const RANDOM_GAMES = Number(process.env.RANDOM_GAMES || 20);  // 비교용 무작위 게임 수 (0 이면 안 만듦)
+// 금요일 생성 개수 (방식별). 0 이면 그 방식은 안 만듦
+const COUNTS = {
+  v1: Number(process.env.V1_COUNT ?? 1000),
+  v2: Number(process.env.V2_COUNT ?? 1000),
+  random: Number(process.env.RANDOM_COUNT ?? 1000), // 비교용 무작위
+};
 
 /** DB에 저장된 마지막 회차 (없으면 0) */
 async function lastSavedRound(sb) {
@@ -99,19 +104,35 @@ export async function check(round) {
     console.log(`[채점] ${round}회 당첨번호가 없어 건너뜁니다`);
     return 0;
   }
-  const { data: picks, error: e2 } = await sb.from('picks')
-    .select('*').eq('target_round', round);
-  if (e2) throw e2;
+  const picks = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error: e2 } = await sb.from('picks')
+      .select('id,n1,n2,n3,n4,n5,n6').eq('target_round', round)
+      .order('id').range(from, from + 999);
+    if (e2) throw e2;
+    picks.push(...data);
+    if (data.length < 1000) break;
+  }
 
   const now = new Date().toISOString();
+  const groups = new Map(); // "맞힌개수|보너스|등수" → id 목록
   for (const p of picks) {
     const g = grade(p, draw);
-    const { error } = await sb.from('picks')
-      .update({ ...g, checked_at: now }).eq('id', p.id);
-    if (error) throw error;
+    const k = `${g.matched_count}|${g.bonus_matched}|${g.prize_rank}`;
+    if (!groups.has(k)) groups.set(k, { g, ids: [] });
+    groups.get(k).ids.push(p.id);
   }
-  const wins = picks.map((p) => grade(p, draw).prize_rank).filter(Boolean);
-  console.log(`[채점] ${round}회: ${picks.length}건 확인, 당첨 ${wins.length}건 ${wins.length ? '(' + wins.map((r) => r + '등').join(', ') + ')' : ''}`);
+  for (const { g, ids } of groups.values()) {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error } = await sb.from('picks')
+        .update({ ...g, checked_at: now }).in('id', ids.slice(i, i + 200));
+      if (error) throw error;
+    }
+  }
+  const byRank = {};
+  for (const { g, ids } of groups.values()) if (g.prize_rank) byRank[g.prize_rank] = (byRank[g.prize_rank] || 0) + ids.length;
+  const summary = Object.keys(byRank).sort().map((r) => `${r}등 ${byRank[r]}`).join(', ');
+  console.log(`[채점] ${round}회: ${picks.length}건 확인, 당첨 ${summary || '없음'}`);
   return picks.length;
 }
 
@@ -122,51 +143,67 @@ export async function check(round) {
 export async function generate(targetRound, { force = false } = {}) {
   const sb = db();
   const latest = await lastSavedRound(sb);
-  const target = targetRound ?? latest + 1;
+  // 다음 추첨 회차: DB 최신+1 과 날짜 기준 중 큰 값 (수집이 늦어도 회차가 밀리지 않게)
+  const target = targetRound ?? Math.max(latest + 1, expectedLatestRound() + 1);
+  if (latest + 1 < target) console.warn(`[추출] 주의: DB 최신 ${latest}회 — ${target - 1}회까지 수집이 안 된 상태로 추출합니다`);
 
-  if (!force) {
-    const { count, error } = await sb.from('picks')
-      .select('id', { count: 'exact', head: true })
-      .eq('target_round', target).eq('source', 'batch'); // 앱에서 만든 번호는 제외
-    if (error) throw error;
-    if (count > 0) {
-      console.log(`[추출] ${target}회 추출번호가 이미 ${count}건 있어 건너뜁니다`);
-      return [];
-    }
-  }
-
-  // 통계용 과거 데이터 (최신 회차가 앞에 오도록). 대상 회차 이전 것만 사용.
+  // 통계용 과거 데이터 (회차 오름차순, 대상 회차 이전만)
   const history = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await sb.from('draws').select('*')
-      .lt('round', target).order('round', { ascending: false })
+      .lt('round', target).order('round', { ascending: true })
       .range(offset, offset + 999);
     if (error) throw error;
     history.push(...data);
     if (data.length < 1000) break;
   }
-
-  // 엔진(조건 1~17)은 회차 오름차순 데이터를 씀
-  const draws = history.slice().reverse().map((d) => ({
+  const draws = history.map((d) => ({
     round: d.round,
     numbers: [d.n1, d.n2, d.n3, d.n4, d.n5, d.n6].sort((a, b) => a - b),
     bonus: d.bonus,
   }));
-  const rows = [];
-  const add = (nums, method) => {
-    const [n1, n2, n3, n4, n5, n6] = nums;
-    rows.push({ target_round: target, n1, n2, n3, n4, n5, n6, method, source: 'batch' });
+
+  const makers = {
+    v1: (n) => generateMany(draws, n, genV1, { stats: buildStats(draws) }).map((g) => g.nums),
+    v2: (n) => generateMany(draws, n, genV2, { stats: buildStatsV2(draws) }).map((g) => g.nums),
+    random: (n) => { const seen = new Set(); while (seen.size < n) seen.add(genRandom().join(',')); return [...seen].map((k) => k.split(',').map(Number)); },
   };
-  const { games } = engineGenerate(draws, { games: ENGINE_GAMES });
-  for (const g of games) add(g.nums, 'engine');
-  for (let i = 0; i < RANDOM_GAMES; i++) add(genRandom(), 'random'); // 성적 비교용
-  const { error } = await sb.from('picks').insert(rows);
-  if (error) throw error;
-  console.log(`[추출] ${target}회 번호 저장: 엔진 ${games.length}게임 + 비교용 무작위 ${RANDOM_GAMES}게임`);
-  return rows;
+
+  const made = {};
+  for (const [method, n] of Object.entries(COUNTS)) {
+    if (!n) continue;
+    if (!force) {
+      const { count, error } = await sb.from('picks')
+        .select('id', { count: 'exact', head: true })
+        .eq('target_round', target).eq('source', 'batch').eq('method', method);
+      if (error) throw error;
+      if (count > 0) { console.log(`[추출] ${target}회 ${method} 이미 ${count}건 있어 건너뜀`); continue; }
+    }
+    const rows = makers[method](n).map(([n1, n2, n3, n4, n5, n6]) =>
+      ({ target_round: target, n1, n2, n3, n4, n5, n6, method, source: 'batch' }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await sb.from('picks').insert(rows.slice(i, i + 500));
+      if (error) throw error;
+    }
+    made[method] = rows.length;
+  }
+  console.log(`[추출] ${target}회 저장: ${Object.entries(made).map(([m, c]) => `${m} ${c}개`).join(', ') || '새로 만든 것 없음'}`);
+  return made;
 }
 
-/** 주간 전체 흐름: 수집 → 새 회차 채점 → 다음 회차 추출 */
+/** 금요일 저녁: (가능하면) 수집 → 다음 회차 V1·V2·무작위 각 1000개 */
+export async function friday() {
+  try { await collect(); } catch (e) { console.warn('[수집] 실패 — DB 에 있는 데이터로 계속:', e.message); }
+  await generate();
+}
+
+/** 일요일 새벽: 수집 → 새 회차 채점 */
+export async function sunday() {
+  const newRounds = await collect();
+  for (const r of newRounds.slice(-3)) await check(r);
+}
+
+/** 수동용 전체 흐름: 수집 → 새 회차 채점 → 다음 회차 추출 */
 export async function weekly() {
   const newRounds = await collect();
   // 처음 1회부터 채우는 경우엔 추출번호가 없으니 최근 회차만 채점

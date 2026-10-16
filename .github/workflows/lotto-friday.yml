@@ -1,0 +1,25 @@
+# 매주 금요일 저녁 7시 47분(한국시간): 다음 회차 번호 생성 (당첨 확인용)
+#   V1 엔진으로 추출한 1000개 + V2 엔진으로 추출한 1000개 → lotto.picks
+name: lotto-friday
+
+on:
+  schedule:
+    - cron: '47 10 * * 5'   # UTC 금 10:47 = KST 금 19:47
+  workflow_dispatch:
+
+jobs:
+  friday:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: batch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node run.mjs friday
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

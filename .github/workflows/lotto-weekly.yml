@@ -1,4 +1,4 @@
-# 매주 일요일 오전 6시 10분(한국시간) 자동 실행: 수집 → 채점 → 다음 회차 추출
+# 매주 일요일 오전 6시 10분(한국시간): 당첨번호 수집 → 채점
 name: lotto-weekly
 
 on:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:         # GitHub 화면에서 수동 실행 버튼
 
 jobs:
-  weekly:
+  sunday:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: node run.mjs weekly
+      - run: node run.mjs sunday
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

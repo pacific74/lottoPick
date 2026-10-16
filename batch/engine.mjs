@@ -155,7 +155,7 @@ export function buildStats(draws, opts = {}) {
 // ------------------------------------------------------------------ 생성
 export function generate(draws, opts = {}) {
   const rng = opts.rng || Math.random;
-  const st = buildStats(draws, opts);
+  const st = opts.stats || buildStats(draws, opts); // 같은 회차를 여러 번 돌릴 때 통계 재사용
   const { o, latest, freq, excluded, banned, sumMin, sumMax, oddDist, decDist, carryDist, P, comboList } = st;
   const G = o.games;
   const prevSet = new Set(latest.numbers);

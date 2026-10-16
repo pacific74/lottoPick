@@ -47,6 +47,16 @@ class Pick {
         saved = false;
 }
 
+/// 회차별 추출번호 성적 (방식별 합계)
+class MethodSummary {
+  final String key; // 'v1' | 'v2' | 'random' | 'app' ...
+  int games = 0;
+  int checked = 0;
+  final List<int> ranks = List<int>.filled(6, 0); // ranks[1]=1등 … ranks[5]=5등
+  MethodSummary(this.key);
+  int get winners => ranks.skip(1).fold(0, (a, b) => a + b);
+}
+
 class LottoRepository {
   SupabaseQuerySchema get _db => Supabase.instance.client.schema('lotto');
 
@@ -72,6 +82,38 @@ class LottoRepository {
     if (source != null) q = q.eq('source', source);
     final rows = await q.order('id', ascending: false).limit(limit);
     return rows.map(Pick.fromJson).toList();
+  }
+
+  /// 특정 회차 추출번호를 방식별로 집계 (회당 수천 건이라 필요한 칸만 나눠 받음)
+  Future<List<MethodSummary>> pickSummary(int targetRound) async {
+    const page = 1000;
+    final map = <String, MethodSummary>{};
+    for (var from = 0;; from += page) {
+      final rows = await _db
+          .from('picks')
+          .select('method,source,prize_rank,matched_count')
+          .eq('target_round', targetRound)
+          .order('id')
+          .range(from, from + page - 1);
+      for (final r in rows) {
+        final source = (r['source'] ?? 'batch') as String;
+        final method = (r['method'] ?? '') as String;
+        final key = source == 'app' ? 'app' : method;
+        final m = map.putIfAbsent(key, () => MethodSummary(key));
+        m.games++;
+        if (r['matched_count'] != null) m.checked++;
+        final rank = r['prize_rank'] as int?;
+        if (rank != null && rank >= 1 && rank <= 5) m.ranks[rank]++;
+      }
+      if (rows.length < page) break;
+    }
+    const order = ['v1', 'v2', 'random', 'app'];
+    final list = map.values.toList()
+      ..sort((a, b) {
+        final ia = order.indexOf(a.key), ib = order.indexOf(b.key);
+        return (ia < 0 ? 99 : ia).compareTo(ib < 0 ? 99 : ib);
+      });
+    return list;
   }
 
   /// 앱에서 생성한 번호 1세트 저장 (서버 함수 lotto.add_pick)

@@ -3,12 +3,16 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "collect": "node --env-file-if-exists=.env run.mjs collect",
     "check": "node --env-file-if-exists=.env run.mjs check",
     "generate": "node --env-file-if-exists=.env run.mjs generate",
-    "weekly": "node --env-file-if-exists=.env run.mjs weekly"
+    "weekly": "node --env-file-if-exists=.env run.mjs weekly",
+    "friday": "node --env-file-if-exists=.env run.mjs friday",
+    "sunday": "node --env-file-if-exists=.env run.mjs sunday"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

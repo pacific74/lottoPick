@@ -24,7 +24,8 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   Object? _error;
   List<Draw> _draws = []; // 회차 오름차순
   List<Pick> _appPicks = []; // 다음 회차, 앱에서 생성한 번호
-  List<Pick> _lastPicks = []; // 최신 회차 추출번호 (채점 결과)
+  List<MethodSummary> _lastSummary = []; // 최신 회차 추출번호 성적 (방식별)
+  List<MethodSummary> _nextSummary = []; // 다음 회차 생성 현황 (방식별)
 
   // 번호 생성
   final String _method = 'engine'; // 번호 생성은 항상 엔진(17가지 조건)
@@ -93,15 +94,21 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     });
     try {
       final draws = await repo.allDraws();
-      List<Pick> last = [];
+      List<MethodSummary> last = [], next = [];
       if (draws.isNotEmpty) {
-        last = await repo.picks(draws.last.round);
+        final res = await Future.wait([
+          repo.pickSummary(draws.last.round),
+          repo.pickSummary(draws.last.round + 1),
+        ]);
+        last = res[0];
+        next = res[1];
       }
       if (!mounted) return;
       setState(() {
         _draws = draws;
         _appPicks = []; // 새로고침하면 생성한 번호 목록 초기화 (DB 에는 그대로 저장돼 있음)
-        _lastPicks = last;
+        _lastSummary = last;
+        _nextSummary = next;
         if (draws.isNotEmpty) {
           _setPreset(_weeks == -1 ? 0 : _weeks);
           _apply();
@@ -482,13 +489,71 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     );
   }
 
+  static String _methodName(String key) => switch (key) {
+        'v1' => 'V1 엔진',
+        'v2' => 'V2 엔진',
+        'random' => '무작위',
+        'app' => '앱에서 생성',
+        _ => key,
+      };
+
+  Widget _summaryTable(List<MethodSummary> list, {required bool graded}) {
+    final head = Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold);
+    Widget cell(String t, {TextStyle? style, TextAlign align = TextAlign.right}) =>
+        Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text(t, style: style, textAlign: align));
+    return Table(
+      columnWidths: const {0: FlexColumnWidth(2.2)},
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+      children: [
+        TableRow(children: [
+          cell('방식', style: head, align: TextAlign.left),
+          cell('게임', style: head),
+          if (graded) ...[
+            for (final r in const [1, 2, 3, 4, 5]) cell('$r등', style: head),
+            cell('5등↑', style: head),
+          ],
+        ]),
+        for (final m in list)
+          TableRow(children: [
+            cell(_methodName(m.key), align: TextAlign.left),
+            cell('${m.games}'),
+            if (graded) ...[
+              for (final r in const [1, 2, 3, 4, 5])
+                cell('${m.ranks[r]}',
+                    style: m.ranks[r] > 0 && r <= 3 ? const TextStyle(color: Colors.red, fontWeight: FontWeight.bold) : null),
+              cell(m.games == 0 ? '-' : '${(100 * m.winners / m.games).toStringAsFixed(2)}%'),
+            ],
+          ]),
+      ],
+    );
+  }
+
   Widget _lastPicksCard() {
     final d = _latest;
+    final checked = _lastSummary.any((m) => m.checked > 0);
     return _Section(
       title: '${d.round}회 추출번호 결과',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (_lastPicks.isEmpty) const Text('이 회차에 추출한 번호가 없습니다'),
-        for (final p in _lastPicks) _PickTile(pick: p, draw: d),
+        if (_lastSummary.isEmpty)
+          const Text('이 회차에 추출한 번호가 없습니다')
+        else ...[
+          _summaryTable(_lastSummary, graded: true),
+          if (!checked)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('아직 채점 전입니다 (일요일 새벽 자동 채점)', style: _subStyle(context)),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('수학적 기대값: 5등 이상 약 2.38% (42게임에 1번)', style: _subStyle(context)),
+          ),
+        ],
+        if (_nextSummary.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text('${d.round + 1}회 생성 현황 (추첨 전)', style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          _summaryTable(_nextSummary, graded: false),
+        ],
       ]),
     );
   }
