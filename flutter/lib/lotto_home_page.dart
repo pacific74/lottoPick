@@ -27,8 +27,8 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   List<Pick> _lastPicks = []; // 최신 회차 추출번호 (채점 결과)
 
   // 번호 생성
-  String _method = 'engine';
-  int _setCount = 1;
+  final String _method = 'engine'; // 번호 생성은 항상 엔진(17가지 조건)
+  final int _setCount = 1;
   bool _generating = false;
 
   // 통계 조건 (입력 중)
@@ -106,7 +106,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
       if (!mounted) return;
       setState(() {
         _draws = draws;
-        _appPicks = app;
+        _appPicks = _batchOrder(app);
         _lastPicks = last;
         if (draws.isNotEmpty) {
           _setPreset(_weeks == -1 ? 0 : _weeks);
@@ -121,6 +121,17 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
         _loading = false;
       });
     }
+  }
+
+  /// DB 에서 최신순(id 내림차순)으로 온 목록 → 20개 묶음 단위로 정렬
+  /// (최신 묶음이 위, 묶음 안은 생성 순서 1~20)
+  List<Pick> _batchOrder(List<Pick> newestFirst) {
+    final asc = newestFirst.reversed.toList();
+    final batches = <List<Pick>>[];
+    for (var i = 0; i < asc.length; i += 20) {
+      batches.add(asc.sublist(i, min(i + 20, asc.length)));
+    }
+    return batches.reversed.expand((b) => b).toList();
   }
 
   // ------------------------------------------------------------ 통계 조건
@@ -172,7 +183,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     }
     if (!mounted) return;
     setState(() {
-      _appPicks = [...made.reversed, ..._appPicks];
+      _appPicks = [...made, ..._appPicks];
       _generating = false;
     });
     if (err != null) {
@@ -296,49 +307,26 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   }
 
   Widget _generateCard() {
-    final m = genMethods.firstWhere((x) => x.key == _method);
     return _Section(
       title: '$_nextRound회 번호 생성',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 6, runSpacing: 4, children: [
-          for (final g in genMethods)
-            ChoiceChip(
-              label: Text(g.label),
-              selected: _method == g.key,
-              onSelected: (_) => setState(() => _method = g.key),
-            ),
-        ]),
-        const SizedBox(height: 6),
-        Text(m.desc, style: _subStyle(context)),
-        const SizedBox(height: 10),
-        if (_method != 'engine') Row(children: [
-          Expanded(
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 1, label: Text('1세트')),
-                ButtonSegment(value: 3, label: Text('3세트')),
-                ButtonSegment(value: 5, label: Text('5세트')),
-              ],
-              selected: {_setCount},
-              showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(() => _setCount = s.first),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 10),
         FilledButton.icon(
           onPressed: _generating ? null : _generate,
           icon: _generating
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.casino_outlined),
-          label: Text(_method == 'engine' ? '다음 회차 번호 생성 (20게임)' : '다음 회차 번호 생성'),
+          label: const Text('다음 회차 번호 생성 (20게임)'),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
         ),
         if (_appPicks.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text('생성한 번호 (${_appPicks.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          for (final p in _appPicks.take(40)) _PickTile(pick: p),
+          for (var i = 0; i < min(_appPicks.length, 40); i++) ...[
+            if (i > 0 && i % 20 == 0) const Divider(height: 20, thickness: 1.5)
+            else if (i > 0 && i % 5 == 0) const SizedBox(height: 10),
+            _PickTile(pick: _appPicks[i], label: '${i % 20 + 1}'),
+          ],
         ],
       ]),
     );
@@ -626,7 +614,8 @@ class _BallRow extends StatelessWidget {
 class _PickTile extends StatelessWidget {
   final Pick pick;
   final Draw? draw; // 있으면 맞힌 번호만 색칠
-  const _PickTile({required this.pick, this.draw});
+  final String? label; // 주면 방식 이름 대신 이 글자 (예: 게임 번호 1~20)
+  const _PickTile({required this.pick, this.draw, this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -637,13 +626,15 @@ class _PickTile extends StatelessWidget {
     } else if (!pick.saved) {
       result = '미저장';
     }
-    final label = '${methodLabel(pick.method)}${pick.source == 'app' && draw != null ? '·앱' : ''}';
+    final text = label ?? '${methodLabel(pick.method)}${pick.source == 'app' && draw != null ? '·앱' : ''}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(children: [
         SizedBox(
-          width: 72,
-          child: Text(label, style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis),
+          width: label != null ? 28 : 72,
+          child: Text(text,
+              style: TextStyle(fontSize: label != null ? 13 : 11, fontWeight: label != null ? FontWeight.bold : null),
+              overflow: TextOverflow.ellipsis),
         ),
         ...pick.numbers.map((n) => Ball(n, size: 28, dim: win != null && !win.contains(n))),
         const Spacer(),
