@@ -396,7 +396,14 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
       title: most ? '가장 많이 추첨된 번호 6개' : '가장 적게 추첨된 번호 6개',
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [for (final n in nums) _CountBall(n: n, count: _counts[n])],
+        children: [
+          for (final n in nums)
+            InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => _showNumber(n),
+              child: _CountBall(n: n, count: _counts[n]),
+            ),
+        ],
       ),
     );
   }
@@ -425,7 +432,81 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
           mainAxisSpacing: 6,
           // 칸 높이 = 공(30) + 글자(약 16) + 여백
           childAspectRatio: (box.maxWidth / (box.maxWidth >= 520 ? 10 : 7)) / 52,
-          children: [for (final n in nums) _CountBall(n: n, count: _counts[n], size: 30)],
+          children: [
+            for (final n in nums)
+              InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => _showNumber(n),
+                child: _CountBall(n: n, count: _counts[n], size: 30),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 번호 1개의 출현 회차 (조회 범위·보너스 포함 여부는 통계 조건 그대로)
+  Combo? _numberInfo(int n) {
+    Combo? c;
+    for (final d in _draws) {
+      if (d.round < _aFrom || d.round > _aTo) continue;
+      if (!d.numbers.contains(n) && !(_aBonus && d.bonus == n)) continue;
+      if (c == null) {
+        c = Combo([n], 1, d.round, d.drawDate);
+      } else {
+        c.count++;
+        c.rounds.add(d.round);
+        c.lastRound = d.round;
+        c.lastDate = d.drawDate;
+      }
+    }
+    return c;
+  }
+
+  void _showNumber(int n) {
+    final c = _numberInfo(n);
+    final bold = const TextStyle(fontSize: 12, fontWeight: FontWeight.bold);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Ball(n, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${c?.count ?? 0}회', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  if (c != null) ...[
+                    Text('최근출현 ${_ymd(c.lastDate)} (${c.lastRound}회차) · ${_aTo - c.lastRound}회 지남',
+                        style: _subStyle(context)),
+                    Text(
+                        c.avgGap == null
+                            ? '1번만 출현'
+                            : '평균 ${c.avgGap!.toStringAsFixed(1)}회마다 (최소 ${c.minGap} · 최대 ${c.maxGap})',
+                        style: _subStyle(context)),
+                  ] else
+                    Text('이 기간에 나오지 않았습니다', style: _subStyle(context)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Text('$_aFrom~$_aTo회${_aBonus ? ' · 보너스 포함' : ''} 기준', style: _subStyle(context)),
+            if (c != null) ...[
+              const SizedBox(height: 12),
+              Text('출현 회차', style: bold),
+              Text(c.rounds.join(', '), style: const TextStyle(fontSize: 12)),
+              if (c.gaps.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('회차 간격', style: bold),
+                Text(c.gaps.join(', '), style: const TextStyle(fontSize: 12)),
+              ],
+            ],
+          ]),
         ),
       ),
     );
