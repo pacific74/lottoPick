@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'lotto_engine.dart';
+import 'lotto_engine_v2.dart';
 import 'lotto_repository.dart';
 import 'lotto_stats.dart';
 import 'update_service.dart';
@@ -28,7 +28,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   List<MethodSummary> _nextSummary = []; // 다음 회차 생성 현황 (방식별)
 
   // 번호 생성
-  final String _method = 'engine'; // 번호 생성은 항상 엔진(17가지 조건)
+  final String _method = 'v2'; // 번호 생성은 V2 엔진 (V1 17가지 조건 + V2 간격 비중)
   final int _setCount = 1;
   bool _generating = false;
 
@@ -160,14 +160,26 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     final historyDesc = _draws.reversed.toList();
     final made = <Pick>[];
     String? err;
-    final List<List<int>> sets = _method == 'engine'
-        ? generateEngine(_draws).map((g) => g.numbers).toList() // 17가지 조건, 20게임
+    final List<List<int>> sets = _method == 'v2'
+        ? generateEngineV2(_draws).map((g) => g.numbers).toList() // V2 엔진, 20게임
         : [for (var i = 0; i < _setCount; i++) generateNumbers(_method, historyDesc)];
+    // 서버에 'v2' 저장 허용(sql/004)이 아직 안 됐으면 예전 이름 'engine' 으로 저장
+    var saveAs = _method;
     for (final nums in sets) {
       try {
-        made.add(await repo.addPick(nums, _method));
+        made.add(await repo.addPick(nums, saveAs));
       } catch (e) {
-        err = '$e';
+        var msg = '$e';
+        if (saveAs != 'engine' && msg.contains('추출 방식')) {
+          saveAs = 'engine';
+          try {
+            made.add(await repo.addPick(nums, saveAs));
+            continue;
+          } catch (e2) {
+            msg = '$e2';
+          }
+        }
+        err = msg;
         made.add(Pick.local(_nextRound, nums, _method));
       }
     }
