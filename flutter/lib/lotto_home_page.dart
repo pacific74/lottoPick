@@ -45,6 +45,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   int _comboSize = 2;
   List<Combo> _combos = [];
   int _comboShown = 10;
+  final Set<String> _openCombos = {}; // 펼쳐서 회차 목록을 보는 조합
 
   String _version = '';
 
@@ -453,34 +454,56 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (shown.isEmpty) const Text('데이터가 없습니다'),
-        for (final c in shown)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
-            ),
-            child: Row(children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${c.count}회', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text('최근출현 ${_ymd(c.lastDate)} (${c.lastRound}회차)', style: _subStyle(context)),
-                  Text(
-                    c.avgDays == null
-                        ? '첫 출현 ${c.firstRound}회차'
-                        : '평균 ${c.avgDays!.round()}일(${c.avgRounds!.toStringAsFixed(1)}회)마다 · 첫 출현 ${c.firstRound}회차',
-                    style: _subStyle(context),
-                  ),
-                ]),
-              ),
-              for (final n in c.numbers) Ball(n, size: 30),
-            ]),
-          ),
+        for (final c in shown) _comboTile(c),
         if (_combos.length > _comboShown)
           TextButton(
             onPressed: () => setState(() => _comboShown += 10),
             child: Text('더 보기 ($_comboShown/${_combos.length})'),
           ),
       ]),
+    );
+  }
+
+  Widget _comboTile(Combo c) {
+    final key = c.numbers.join(',');
+    final open = _openCombos.contains(key);
+    final since = _aTo - c.lastRound; // 마지막 출현 후 지난 회차 수
+    final gapText = c.avgGap == null
+        ? '1번만 출현'
+        : '평균 ${c.avgGap!.toStringAsFixed(1)}회마다 (최소 ${c.minGap} · 최대 ${c.maxGap})';
+    return InkWell(
+      onTap: () => setState(() => open ? _openCombos.remove(key) : _openCombos.add(key)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Text('${c.count}회', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Icon(open ? Icons.expand_less : Icons.expand_more, size: 18),
+                ]),
+                Text('최근출현 ${_ymd(c.lastDate)} (${c.lastRound}회차) · $since회 지남', style: _subStyle(context)),
+                Text(gapText, style: _subStyle(context)),
+              ]),
+            ),
+            for (final n in c.numbers) Ball(n, size: 30),
+          ]),
+          if (open) ...[
+            const SizedBox(height: 6),
+            Text('출현 회차', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            Text(c.rounds.join(', '), style: const TextStyle(fontSize: 12)),
+            if (c.gaps.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('회차 간격', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(c.gaps.join(', '), style: const TextStyle(fontSize: 12)),
+            ],
+          ],
+        ]),
+      ),
     );
   }
 

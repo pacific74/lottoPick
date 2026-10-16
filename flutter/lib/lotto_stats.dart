@@ -7,20 +7,25 @@ import 'lotto_repository.dart';
 
 class Combo {
   final List<int> numbers;
-  final int firstRound;
-  final DateTime firstDate;
+  final List<int> rounds = []; // 나온 회차 (오름차순)
   int count;
   int lastRound;
   DateTime lastDate;
-  Combo(this.numbers, this.count, this.lastRound, this.lastDate)
-      : firstRound = lastRound,
-        firstDate = lastDate;
+  Combo(this.numbers, this.count, this.lastRound, this.lastDate) {
+    rounds.add(lastRound);
+  }
 
-  /// 평균 출현 간격(회). 1번만 나왔으면 null
-  double? get avgRounds => count < 2 ? null : (lastRound - firstRound) / (count - 1);
+  /// 회차 사이 간격들. 예) 3,12,44 회차 → [9, 32]
+  List<int> get gaps => [for (var i = 1; i < rounds.length; i++) rounds[i] - rounds[i - 1]];
 
-  /// 평균 출현 간격(일). 1번만 나왔으면 null
-  double? get avgDays => count < 2 ? null : lastDate.difference(firstDate).inDays / (count - 1);
+  /// 평균 간격(회). 1번만 나왔으면 null
+  double? get avgGap {
+    final g = gaps;
+    return g.isEmpty ? null : g.reduce((a, b) => a + b) / g.length;
+  }
+
+  int? get minGap => gaps.isEmpty ? null : gaps.reduce((a, b) => a < b ? a : b);
+  int? get maxGap => gaps.isEmpty ? null : gaps.reduce((a, b) => a > b ? a : b);
 }
 
 class LottoStats {
@@ -57,6 +62,7 @@ class LottoStats {
           map[key] = Combo(c, 1, d.round, d.drawDate);
         } else {
           e.count++;
+          e.rounds.add(d.round);
           if (d.round > e.lastRound) {
             e.lastRound = d.round;
             e.lastDate = d.drawDate;
