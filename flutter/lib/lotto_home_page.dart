@@ -93,20 +93,14 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     });
     try {
       final draws = await repo.allDraws();
-      List<Pick> app = [], last = [];
+      List<Pick> last = [];
       if (draws.isNotEmpty) {
-        final r = draws.last.round;
-        final res = await Future.wait([
-          repo.picks(r + 1, source: 'app', limit: 50),
-          repo.picks(r),
-        ]);
-        app = res[0];
-        last = res[1];
+        last = await repo.picks(draws.last.round);
       }
       if (!mounted) return;
       setState(() {
         _draws = draws;
-        _appPicks = _batchOrder(app);
+        _appPicks = []; // 새로고침하면 생성한 번호 목록 초기화 (DB 에는 그대로 저장돼 있음)
         _lastPicks = last;
         if (draws.isNotEmpty) {
           _setPreset(_weeks == -1 ? 0 : _weeks);
@@ -121,17 +115,6 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
         _loading = false;
       });
     }
-  }
-
-  /// DB 에서 최신순(id 내림차순)으로 온 목록 → 20개 묶음 단위로 정렬
-  /// (최신 묶음이 위, 묶음 안은 생성 순서 1~20)
-  List<Pick> _batchOrder(List<Pick> newestFirst) {
-    final asc = newestFirst.reversed.toList();
-    final batches = <List<Pick>>[];
-    for (var i = 0; i < asc.length; i += 20) {
-      batches.add(asc.sublist(i, min(i + 20, asc.length)));
-    }
-    return batches.reversed.expand((b) => b).toList();
   }
 
   // ------------------------------------------------------------ 통계 조건
@@ -183,7 +166,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     }
     if (!mounted) return;
     setState(() {
-      _appPicks = [...made, ..._appPicks];
+      _appPicks = made; // 이번에 만든 20게임만 표시 (직전 생성분은 지움)
       _generating = false;
     });
     if (err != null) {
@@ -322,10 +305,9 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
           const SizedBox(height: 14),
           Text('생성한 번호 (${_appPicks.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          for (var i = 0; i < min(_appPicks.length, 40); i++) ...[
-            if (i > 0 && i % 20 == 0) const Divider(height: 20, thickness: 1.5)
-            else if (i > 0 && i % 5 == 0) const SizedBox(height: 10),
-            _PickTile(pick: _appPicks[i], label: '${i % 20 + 1}'),
+          for (var i = 0; i < _appPicks.length; i++) ...[
+            if (i > 0 && i % 5 == 0) const SizedBox(height: 10),
+            _PickTile(pick: _appPicks[i], label: '${i + 1}'),
           ],
         ],
       ]),
