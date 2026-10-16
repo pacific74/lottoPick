@@ -28,10 +28,19 @@ class RemoteVersion {
 class UpdateService {
   static bool _busy = false;
 
-  /// 화면 표시용 현재 버전 "v0.0.1 (3)"
+  /// 실제 빌드번호.
+  /// APK 를 CPU별로 나눠 빌드(--split-per-abi)하면 안드로이드 versionCode 앞에
+  /// CPU 구분값이 붙음 (arm64 = 2000 + 빌드번호, armv7 = 1000 + …, x86_64 = 4000 + …).
+  /// 그래서 1000 이상이면 뒤 세 자리만 씀. 예) 2005 → 5
+  static int buildOf(PackageInfo p) {
+    final n = int.tryParse(p.buildNumber) ?? 0;
+    return n >= 1000 ? n % 1000 : n;
+  }
+
+  /// 화면 표시용 현재 버전 "v0.0.1 (5)"
   static Future<String> currentLabel() async {
     final p = await PackageInfo.fromPlatform();
-    return 'v${p.version} (${p.buildNumber})';
+    return 'v${p.version} (${buildOf(p)})';
   }
 
   /// 새 버전 확인. manual=true 면 "최신 버전입니다" / 실패 메시지도 보여줌.
@@ -40,7 +49,7 @@ class UpdateService {
     _busy = true;
     try {
       final info = await PackageInfo.fromPlatform();
-      final current = int.tryParse(info.buildNumber) ?? 0;
+      final current = buildOf(info);
       final uri = Uri.parse('${updateBaseUrl}version.json?t=${DateTime.now().millisecondsSinceEpoch}');
       final res = await http.get(uri).timeout(const Duration(seconds: 10));
       if (res.statusCode != 200) throw 'HTTP ${res.statusCode}';
@@ -49,7 +58,7 @@ class UpdateService {
       if (!context.mounted) return;
 
       if (remote.build <= current) {
-        if (manual) _snack(context, '최신 버전입니다 (v${info.version} / ${info.buildNumber})');
+        if (manual) _snack(context, '최신 버전입니다 (v${info.version} / $current)');
         return;
       }
 
@@ -57,7 +66,7 @@ class UpdateService {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('새 버전이 있습니다'),
-          content: Text('현재: v${info.version} (${info.buildNumber})\n'
+          content: Text('현재: v${info.version} ($current)\n'
               '새 버전: v${remote.version} (${remote.build})\n'
               '${remote.time.isEmpty ? '' : '배포: ${remote.time}\n'}'
               '\n지금 업데이트할까요?'),
