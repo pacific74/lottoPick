@@ -16,7 +16,7 @@ class LottoHomePage extends StatefulWidget {
   State<LottoHomePage> createState() => _LottoHomePageState();
 }
 
-class _LottoHomePageState extends State<LottoHomePage> {
+class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserver {
   final repo = LottoRepository();
 
   bool _loading = true;
@@ -59,7 +59,29 @@ class _LottoHomePageState extends State<LottoHomePage> {
       if (mounted) setState(() => _version = v);
     }).catchError((_) {});
     // 앱 시작 직후 새 버전 확인
-    WidgetsBinding.instance.addPostFrameCallback((_) => UpdateService.check(context));
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // 백그라운드에 있다가 다시 앱으로 돌아왔을 때도 확인 (10분에 한 번까지)
+  DateTime? _lastUpdateCheck;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkUpdate();
+  }
+
+  void _checkUpdate() {
+    final now = DateTime.now();
+    if (_lastUpdateCheck != null && now.difference(_lastUpdateCheck!) < const Duration(minutes: 10)) return;
+    _lastUpdateCheck = now;
+    if (mounted) UpdateService.check(context);
   }
 
   Future<void> _load() async {
