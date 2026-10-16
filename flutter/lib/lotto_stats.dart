@@ -7,10 +7,20 @@ import 'lotto_repository.dart';
 
 class Combo {
   final List<int> numbers;
+  final int firstRound;
+  final DateTime firstDate;
   int count;
   int lastRound;
   DateTime lastDate;
-  Combo(this.numbers, this.count, this.lastRound, this.lastDate);
+  Combo(this.numbers, this.count, this.lastRound, this.lastDate)
+      : firstRound = lastRound,
+        firstDate = lastDate;
+
+  /// 평균 출현 간격(회). 1번만 나왔으면 null
+  double? get avgRounds => count < 2 ? null : (lastRound - firstRound) / (count - 1);
+
+  /// 평균 출현 간격(일). 1번만 나왔으면 null
+  double? get avgDays => count < 2 ? null : lastDate.difference(firstDate).inDays / (count - 1);
 }
 
 class LottoStats {

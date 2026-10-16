@@ -209,7 +209,13 @@ class _LottoHomePageState extends State<LottoHomePage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
+        // 넓은 화면(웹/태블릿)에서는 가운데 최대 720px 폭으로
+        padding: EdgeInsets.fromLTRB(
+          max(12.0, (MediaQuery.sizeOf(context).width - 720) / 2),
+          4,
+          max(12.0, (MediaQuery.sizeOf(context).width - 720) / 2),
+          32,
+        ),
         children: [
           if (kIsWeb) _webAppBanner(),
           _latestCard(),
@@ -394,12 +400,16 @@ class _LottoHomePageState extends State<LottoHomePage> {
         style: const ButtonStyle(visualDensity: VisualDensity.compact),
         onSelectionChanged: (s) => setState(() => _sortByCount = s.first),
       ),
-      child: GridView.count(
-        crossAxisCount: 7,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 0.82,
-        children: [for (final n in nums) _CountBall(n: n, count: _counts[n], size: 30)],
+      child: LayoutBuilder(
+        builder: (context, box) => GridView.count(
+          crossAxisCount: box.maxWidth >= 520 ? 10 : 7,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 6,
+          // 칸 높이 = 공(30) + 글자(약 16) + 여백
+          childAspectRatio: (box.maxWidth / (box.maxWidth >= 520 ? 10 : 7)) / 52,
+          children: [for (final n in nums) _CountBall(n: n, count: _counts[n], size: 30)],
+        ),
       ),
     );
   }
@@ -432,6 +442,12 @@ class _LottoHomePageState extends State<LottoHomePage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${c.count}회', style: const TextStyle(fontWeight: FontWeight.bold)),
                   Text('최근출현 ${_ymd(c.lastDate)} (${c.lastRound}회차)', style: _subStyle(context)),
+                  Text(
+                    c.avgDays == null
+                        ? '첫 출현 ${c.firstRound}회차'
+                        : '평균 ${c.avgDays!.round()}일(${c.avgRounds!.toStringAsFixed(1)}회)마다 · 첫 출현 ${c.firstRound}회차',
+                    style: _subStyle(context),
+                  ),
                 ]),
               ),
               for (final n in c.numbers) Ball(n, size: 30),
