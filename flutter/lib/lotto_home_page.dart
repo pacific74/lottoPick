@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'lotto_engine.dart';
 import 'lotto_engine_v2.dart';
 import 'lotto_repository.dart';
 import 'lotto_stats.dart';
@@ -28,8 +29,9 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   List<MethodSummary> _nextSummary = []; // 다음 회차 생성 현황 (방식별)
 
   // 번호 생성
-  final String _method = 'v2'; // 번호 생성은 V2 엔진 (V1 17가지 조건 + V2 간격 비중)
-  final int _setCount = 1;
+  // 번호 생성: V1 엔진 10게임 + V2 엔진 10게임 (2026-10-19)
+  static const int _v1Games = 10;
+  static const int _v2Games = 10;
   bool _generating = false;
 
   // 통계 조건 (입력 중)
@@ -157,30 +159,32 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     setState(() => _generating = true);
     // 화면이 먼저 '생성 중'으로 바뀌도록 한 프레임 양보
     await Future<void>.delayed(const Duration(milliseconds: 50));
-    final historyDesc = _draws.reversed.toList();
     final made = <Pick>[];
     String? err;
-    final List<List<int>> sets = _method == 'v2'
-        ? generateEngineV2(_draws).map((g) => g.numbers).toList() // V2 엔진, 20게임
-        : [for (var i = 0; i < _setCount; i++) generateNumbers(_method, historyDesc)];
-    // 서버에 'v2' 저장 허용(sql/004)이 아직 안 됐으면 예전 이름 'engine' 으로 저장
-    var saveAs = _method;
-    for (final nums in sets) {
+    // (방식, 번호) 20게임: 앞 10개 V1, 뒤 10개 V2
+    final sets = <(String, List<int>)>[
+      for (final g in generateEngine(_draws, o: const EngineOptions(games: _v1Games))) ('v1', g.numbers),
+      for (final g in generateEngineV2(_draws, o: const EngineOptions(games: _v2Games), quadGames: 0, tripleGames: 3)) ('v2', g.numbers),
+    ];
+    // 서버에 'v1'·'v2' 저장 허용(sql/004)이 아직 안 됐으면 예전 이름 'engine' 으로 저장
+    var legacy = false;
+    for (final (method, nums) in sets) {
+      var saveAs = legacy ? 'engine' : method;
       try {
         made.add(await repo.addPick(nums, saveAs));
       } catch (e) {
         var msg = '$e';
-        if (saveAs != 'engine' && msg.contains('추출 방식')) {
-          saveAs = 'engine';
+        if (!legacy && msg.contains('추출 방식')) {
+          legacy = true;
           try {
-            made.add(await repo.addPick(nums, saveAs));
+            made.add(await repo.addPick(nums, 'engine'));
             continue;
           } catch (e2) {
             msg = '$e2';
           }
         }
         err = msg;
-        made.add(Pick.local(_nextRound, nums, _method));
+        made.add(Pick.local(_nextRound, nums, method));
       }
     }
     if (!mounted) return;
@@ -317,12 +321,13 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
           icon: _generating
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.casino_outlined),
-          label: const Text('다음 회차 번호 생성 (20게임)'),
+          label: const Text('다음 회차 번호 생성 (V1 10 + V2 10게임)'),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
         ),
         if (_appPicks.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text('생성한 번호 (${_appPicks.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text('1~$_v1Games번 V1 엔진 · ${_v1Games + 1}~${_v1Games + _v2Games}번 V2 엔진', style: _subStyle(context)),
           const SizedBox(height: 4),
           for (var i = 0; i < _appPicks.length; i++) ...[
             if (i > 0 && i % 5 == 0) const SizedBox(height: 10),

@@ -83,7 +83,9 @@ void _split603010(List<_Item> items, double Function(_Item) baseW) {
   }
 }
 
-List<EngineGame> generateEngineV2(List<Draw> draws, {EngineOptions o = const EngineOptions(), Random? rng}) {
+/// quadGames / tripleGames: 4개·3개 조합 게임 수 (기본 1 / 5), 나머지는 2개 조합
+List<EngineGame> generateEngineV2(List<Draw> draws,
+    {EngineOptions o = const EngineOptions(), Random? rng, int quadGames = 1, int tripleGames = 5}) {
   final rnd = rng ?? Random.secure();
   final n = draws.length;
   final latest = draws[n - 1];
@@ -195,7 +197,7 @@ List<EngineGame> generateEngineV2(List<Draw> draws, {EngineOptions o = const Eng
 
   // ---- 20게임 배분: 4개 1 · 3개 5 · 2개 나머지
   final g = o.games;
-  final nQuad = min(1, quads.length), nTri = min(5, triples.length);
+  final nQuad = min(quadGames, quads.length), nTri = min(tripleGames, triples.length);
   final sizes = [
     ...List<int>.filled(nQuad, 4),
     ...List<int>.filled(nTri, 3),
