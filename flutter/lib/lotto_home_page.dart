@@ -274,7 +274,7 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
           Padding(
             padding: const EdgeInsets.only(top: 20),
             child: Text(
-              _version.isEmpty ? '로또픽' : '로또픽 $_version',
+              _version.isEmpty ? '로또픽 · © 왕대박' : '로또픽 $_version · © 왕대박',
               textAlign: TextAlign.center,
               style: _subStyle(context),
             ),

@@ -79,7 +79,8 @@ export function buildStatsV2(draws, opts = {}) {
     .sort((a, b) => b.count - a.count || b.since - a.since);
 
   // 2개: 자주 나온 순 상위 20 → 60/30/10, 60% 그룹은 오래 안 나왔을수록 가중치 ↑
-  const pairs = ranked(2).slice(0, 20);
+  const allPairs = ranked(2);
+  const pairs = allPairs.slice(0, 20);
   split603010(pairs, (x) => (x.since > x.avg ? (x.since / x.avg) ** 2 : 1));
   // 3개: 자주 나온 순, 평균 간격보다 오래 안 나온 것만 5세트
   const triples = ranked(3).filter((x) => x.count >= 2 && x.since > x.avg).slice(0, 5);
@@ -88,14 +89,29 @@ export function buildStatsV2(draws, opts = {}) {
   const quads = ranked(4).slice(0, 1);
   quads.forEach((x) => { x.p = 1; });
 
-  return { ...st, numW, nums, pairs, triples, quads };
+  // ---- 묶음 추천: 번호 1개를 뽑을 때, 그 번호가 '많이 나왔지만 평균보다 오래 안 나온' 번호이고
+  //      그 번호와 자주 같이 나온 동반번호(2개 조합)도 평균 간격보다 오래 안 나왔다면 같이 묶어서 뽑음
+  const meanFreq = nums.reduce((a, x) => a + x.freq, 0) / (nums.length || 1);
+  const bundle = Array.from({ length: 46 }, () => []);
+  for (const x of nums) {
+    if (!(x.since > x.avg && x.freq > meanFreq)) continue;
+    const mine = allPairs.filter((c) => c.nums.includes(x.n));
+    if (!mine.length) continue;
+    const meanCount = mine.reduce((a, c) => a + c.count, 0) / mine.length;
+    bundle[x.n] = mine
+      .filter((c) => c.count > meanCount && c.since > c.avg)   // 자주 나왔지만 최근엔 안 나온 동반번호
+      .sort((a, b) => b.count - a.count || b.since - a.since)
+      .map((c) => ({ m: c.nums.find((v) => v !== x.n), count: c.count }));
+  }
+
+  return { ...st, numW, nums, pairs, triples, quads, bundle };
 }
 
 /** V2 로 games 개 (기본 20) 생성 — 반환 형식은 V1 generate 와 같음 */
 export function generateV2(draws, opts = {}) {
   const rng = opts.rng || Math.random;
   const st = opts.stats || buildStatsV2(draws, opts);
-  const { o, latest, excluded, banned, sumMin, sumMax, oddDist, decDist, carryDist, numW, pairs, triples, quads } = st;
+  const { o, latest, excluded, banned, sumMin, sumMax, oddDist, decDist, carryDist, numW, pairs, triples, quads, bundle } = st;
   const G = o.games;
   const prevSet = new Set(latest.numbers);
 
@@ -139,6 +155,14 @@ export function generateV2(draws, opts = {}) {
         const n = pickWeighted(cand, (x) => numW[x], rng); // V2 번호 비중 60/30/10
         if (n == null) { ok = false; break; }
         chosen.push(n); if (n % 2) needOdd--; else needEven--; if (wantPrev) needPrev--;
+        // 묶음 추천: 자주 같이 나온 순으로, 남은 칸·홀짝·이월수 조건에 맞는 동반번호 1개를 같이 넣음
+        if (bundle[n].length && chosen.length < 6) {
+          const slots = 6 - chosen.length;
+          const mate = bundle[n].find(({ m }) => pool.includes(m) && !chosen.includes(m)
+            && (m % 2 ? needOdd > 0 : needEven > 0)
+            && (prevSet.has(m) ? needPrev > 0 : slots - 1 >= needPrev));
+          if (mate) { chosen.push(mate.m); if (mate.m % 2) needOdd--; else needEven--; if (prevSet.has(mate.m)) needPrev--; }
+        }
       }
       if (!ok) continue;
       chosen.sort((x, y) => x - y);

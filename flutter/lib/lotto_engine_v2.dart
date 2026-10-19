@@ -182,7 +182,8 @@ List<EngineGame> generateEngineV2(List<Draw> draws,
   }
 
   // 2개: 자주 나온 순 상위 20 → 60/30/10, 60% 그룹은 오래 안 나왔을수록 가중치 ↑
-  final pairs = rankedCombos(2).take(20).toList();
+  final allPairs = rankedCombos(2);
+  final pairs = allPairs.take(20).toList();
   _split603010(pairs, (x) => x.since > x.avg ? pow(x.since / x.avg, 2).toDouble() : 1.0);
   // 3개: 자주 나온 순, 평균 간격보다 오래 안 나온 것만 5세트
   final triples = rankedCombos(3).where((x) => x.count >= 2 && x.since > x.avg).take(5).toList();
@@ -193,6 +194,21 @@ List<EngineGame> generateEngineV2(List<Draw> draws,
   final quads = rankedCombos(4).take(1).toList();
   for (final x in quads) {
     x.p = 1;
+  }
+
+  // ---- 묶음 추천: 번호 1개를 뽑을 때, 그 번호가 '많이 나왔지만 평균보다 오래 안 나온' 번호이고
+  //      그 번호와 자주 같이 나온 동반번호(2개 조합)도 평균 간격보다 오래 안 나왔다면 같이 묶어서 뽑음
+  final meanFreq = numItems.isEmpty ? 0.0 : numItems.fold<double>(0, (a, x) => a + freq[x.nums[0]]) / numItems.length;
+  final bundle = List<List<int>>.generate(46, (_) => <int>[]);
+  for (final x in numItems) {
+    final n0 = x.nums[0];
+    if (!(x.since > x.avg && freq[n0] > meanFreq)) continue;
+    final mine = allPairs.where((c) => c.nums.contains(n0)).toList();
+    if (mine.isEmpty) continue;
+    final meanCount = mine.fold<double>(0, (a, c) => a + c.count) / mine.length;
+    final good = mine.where((c) => c.count > meanCount && c.since > c.avg).toList()
+      ..sort((a, b) => b.count != a.count ? b.count - a.count : b.since - a.since);
+    bundle[n0] = [for (final c in good) c.nums.firstWhere((v) => v != n0)];
   }
 
   // ---- 20게임 배분: 4개 1 · 3개 5 · 2개 나머지
@@ -276,6 +292,29 @@ List<EngineGame> generateEngineV2(List<Draw> draws,
           needEven--;
         }
         if (wantPrev) needPrev--;
+        // 묶음 추천: 자주 같이 나온 순으로, 남은 칸·홀짝·이월수 조건에 맞는 동반번호 1개를 같이 넣음
+        if (bundle[pk].isNotEmpty && chosen.length < 6) {
+          final slots = 6 - chosen.length;
+          int? mate;
+          for (final m in bundle[pk]) {
+            if (pool.contains(m) &&
+                !chosen.contains(m) &&
+                (m.isOdd ? needOdd > 0 : needEven > 0) &&
+                (prevSet.contains(m) ? needPrev > 0 : slots - 1 >= needPrev)) {
+              mate = m;
+              break;
+            }
+          }
+          if (mate != null) {
+            chosen.add(mate);
+            if (mate.isOdd) {
+              needOdd--;
+            } else {
+              needEven--;
+            }
+            if (prevSet.contains(mate)) needPrev--;
+          }
+        }
       }
       if (!ok) continue;
       chosen.sort();
