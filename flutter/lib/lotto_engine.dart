@@ -105,7 +105,9 @@ T? _pickWeighted<T>(List<T> items, double Function(T) weightOf, Random rng) {
   return items.last;
 }
 
-List<EngineGame> generateEngine(List<Draw> draws, {EngineOptions o = const EngineOptions(), Random? rng}) {
+/// avoid: 이미 발급한 번호("1,2,3,4,5,6" 형식)는 다시 만들지 않음
+List<EngineGame> generateEngine(List<Draw> draws,
+    {EngineOptions o = const EngineOptions(), Random? rng, Set<String>? avoid}) {
   final rnd = rng ?? Random.secure();
   final n = draws.length;
   final latest = draws[n - 1];
@@ -138,6 +140,7 @@ List<EngineGame> generateEngine(List<Draw> draws, {EngineOptions o = const Engin
   final banned = <String>{for (final d in draws) _key(d.numbers)};
   banned.add(_key(top6));
   banned.add(_key(bottom6));
+  if (avoid != null) banned.addAll(avoid); // 이번 회차에 이미 발급한 번호와 6개 전부 같은 조합 제외
 
   // 11 합계 범위, 10 홀짝, 12 번호대, 14 이월수
   var sumMin = 1 << 30, sumMax = -1;

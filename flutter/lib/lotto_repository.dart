@@ -85,6 +85,26 @@ class LottoRepository {
   }
 
   /// 특정 회차 추출번호를 방식별로 집계 (회당 수천 건이라 필요한 칸만 나눠 받음)
+  /// 그 회차에 이미 발급된 번호 전부 ("1,2,3,4,5,6" 형식, 배치·앱 모두) — 같은 번호 재발급 방지용
+  Future<Set<String>> pickKeys(int targetRound) async {
+    const page = 1000;
+    final keys = <String>{};
+    for (var from = 0;; from += page) {
+      final rows = await _db
+          .from('picks')
+          .select('n1,n2,n3,n4,n5,n6')
+          .eq('target_round', targetRound)
+          .order('id')
+          .range(from, from + page - 1);
+      for (final r in rows) {
+        final n = [r['n1'], r['n2'], r['n3'], r['n4'], r['n5'], r['n6']].cast<int>()..sort();
+        keys.add(n.join(','));
+      }
+      if (rows.length < page) break;
+    }
+    return keys;
+  }
+
   Future<List<MethodSummary>> pickSummary(int targetRound) async {
     const page = 1000;
     final map = <String, MethodSummary>{};

@@ -161,10 +161,21 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     await Future<void>.delayed(const Duration(milliseconds: 50));
     final made = <Pick>[];
     String? err;
+    // 이번 회차에 이미 발급된 번호(배치·앱 전부)와 6개가 모두 같은 조합은 만들지 않음
+    Set<String> issued = {};
+    try {
+      issued = await repo.pickKeys(_nextRound);
+    } catch (_) {
+      // 읽기 실패 시에는 이번 생성 안에서만 중복을 막음
+    }
     // (방식, 번호) 20게임: 앞 10개 V1, 뒤 10개 V2
+    final v1 = generateEngine(_draws, o: const EngineOptions(games: _v1Games), avoid: issued);
+    final used = {...issued, for (final g in v1) g.numbers.join(',')}; // V2 는 V1 번호도 피함
+    final v2 = generateEngineV2(_draws,
+        o: const EngineOptions(games: _v2Games), quadGames: 0, tripleGames: 3, avoid: used);
     final sets = <(String, List<int>)>[
-      for (final g in generateEngine(_draws, o: const EngineOptions(games: _v1Games))) ('v1', g.numbers),
-      for (final g in generateEngineV2(_draws, o: const EngineOptions(games: _v2Games), quadGames: 0, tripleGames: 3)) ('v2', g.numbers),
+      for (final g in v1) ('v1', g.numbers),
+      for (final g in v2) ('v2', g.numbers),
     ];
     // 서버에 'v1'·'v2' 저장 허용(sql/004)이 아직 안 됐으면 예전 이름 'engine' 으로 저장
     var legacy = false;

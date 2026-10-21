@@ -85,7 +85,11 @@ void _split603010(List<_Item> items, double Function(_Item) baseW) {
 
 /// quadGames / tripleGames: 4개·3개 조합 게임 수 (기본 1 / 5), 나머지는 2개 조합
 List<EngineGame> generateEngineV2(List<Draw> draws,
-    {EngineOptions o = const EngineOptions(), Random? rng, int quadGames = 1, int tripleGames = 5}) {
+    {EngineOptions o = const EngineOptions(),
+    Random? rng,
+    int quadGames = 1,
+    int tripleGames = 5,
+    Set<String>? avoid}) {
   final rnd = rng ?? Random.secure();
   final n = draws.length;
   final latest = draws[n - 1];
@@ -117,6 +121,7 @@ List<EngineGame> generateEngineV2(List<Draw> draws,
   final banned = <String>{for (final d in draws) _k(d.numbers)};
   banned.add(_k(ranked(true).take(6).toList()..sort()));
   banned.add(_k(ranked(false).take(6).toList()..sort()));
+  if (avoid != null) banned.addAll(avoid); // 이번 회차에 이미 발급한 번호와 6개 전부 같은 조합 제외
 
   // 11 합계, 10 홀짝, 12 번호대, 14 이월수
   var sumMin = 1 << 30, sumMax = -1;

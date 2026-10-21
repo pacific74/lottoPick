@@ -9,7 +9,7 @@ import { generateV2 as genV2, buildStatsV2, generateMany } from './engine_v2.mjs
 const COUNTS = {
   v1: Number(process.env.V1_COUNT ?? 1000),
   v2: Number(process.env.V2_COUNT ?? 1000),
-  random: Number(process.env.RANDOM_COUNT ?? 1000), // 비교용 무작위
+  random: Number(process.env.RANDOM_COUNT ?? 0), // 무작위는 기본으로 안 만듦 (필요하면 RANDOM_COUNT=1000)
 };
 
 /** DB에 저장된 마지막 회차 (없으면 0) */
@@ -163,11 +163,24 @@ export async function generate(targetRound, { force = false } = {}) {
     bonus: d.bonus,
   }));
 
+  const withBanned = (st, issued) => { for (const k of issued) st.banned.add(k); return st; };
   const makers = {
-    v1: (n) => generateMany(draws, n, genV1, { stats: buildStats(draws) }).map((g) => g.nums),
-    v2: (n) => generateMany(draws, n, genV2, { stats: buildStatsV2(draws) }).map((g) => g.nums),
-    random: (n) => { const seen = new Set(); while (seen.size < n) seen.add(genRandom().join(',')); return [...seen].map((k) => k.split(',').map(Number)); },
+    v1: (n, issued) => generateMany(draws, n, genV1, { stats: withBanned(buildStats(draws), issued) }).map((g) => g.nums),
+    v2: (n, issued) => generateMany(draws, n, genV2, { stats: withBanned(buildStatsV2(draws), issued) }).map((g) => g.nums),
+    random: (n, issued) => { const seen = new Set(); while (seen.size < n) { const k = genRandom().join(','); if (!issued.has(k)) seen.add(k); } return [...seen].map((k) => k.split(',').map(Number)); },
   };
+
+  // 이 회차에 이미 발급된 번호 (배치·앱 전부) — 6개가 모두 같은 조합은 다시 만들지 않음
+  const issued = new Set();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from('picks')
+      .select('n1,n2,n3,n4,n5,n6').eq('target_round', target)
+      .order('id').range(from, from + 999);
+    if (error) throw error;
+    for (const r of data) issued.add([r.n1, r.n2, r.n3, r.n4, r.n5, r.n6].sort((a, b) => a - b).join(','));
+    if (data.length < 1000) break;
+  }
+  console.log(`[추출] ${target}회 이미 발급된 번호 ${issued.size}개는 피해서 만듭니다`);
 
   const made = {};
   for (const [method, n] of Object.entries(COUNTS)) {
@@ -179,7 +192,9 @@ export async function generate(targetRound, { force = false } = {}) {
       if (error) throw error;
       if (count > 0) { console.log(`[추출] ${target}회 ${method} 이미 ${count}건 있어 건너뜀`); continue; }
     }
-    const rows = makers[method](n).map(([n1, n2, n3, n4, n5, n6]) =>
+    const made_nums = makers[method](n, issued);
+    for (const nums of made_nums) issued.add(nums.join(',')); // 다음 방식(V2)은 V1 번호도 피함
+    const rows = made_nums.map(([n1, n2, n3, n4, n5, n6]) =>
       ({ target_round: target, n1, n2, n3, n4, n5, n6, method, source: 'batch' }));
     for (let i = 0; i < rows.length; i += 500) {
       const { error } = await sb.from('picks').insert(rows.slice(i, i + 500));
@@ -191,7 +206,7 @@ export async function generate(targetRound, { force = false } = {}) {
   return made;
 }
 
-/** 금요일 저녁: (가능하면) 수집 → 다음 회차 V1·V2·무작위 각 1000개 */
+/** 금요일 저녁: (가능하면) 수집 → 다음 회차 V1 엔진 1000개 · V2 엔진 1000개 */
 export async function friday() {
   try { await collect(); } catch (e) { console.warn('[수집] 실패 — DB 에 있는 데이터로 계속:', e.message); }
   await generate();
