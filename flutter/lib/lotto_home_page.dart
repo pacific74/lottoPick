@@ -50,9 +50,9 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   List<Combo> _combos = [];
   int _comboShown = 10;
   final Set<String> _openCombos = {}; // 펼쳐서 회차 목록을 보는 조합
-  // 자주 나오는 번호/동반번호 중 평균 간격보다 오래 안 나온 것
-  int _overSize = 1; // 1 = 번호 1개, 2·3·4 = 동반번호
-  List<Combo> _overList = [];
+  // 자주 나오는 번호/동반번호(1·2·3·4개) 중 평균 간격보다 오래 안 나온 것 — 한눈에 보게 4가지 모두 펼쳐 둠
+  static const int _overTop = 15; // 자주 나온 순 상위 몇 개를 볼지
+  final Map<int, List<Combo>> _overLists = {1: [], 2: [], 3: [], 4: []};
 
   String _version = '';
 
@@ -145,23 +145,18 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
     _counts = LottoStats.counts(sel, includeBonus: _aBonus);
     _combos = LottoStats.combos(sel, _comboSize);
     _comboShown = 10;
-    _overList = _calcOver(sel, _overSize);
+    for (final k in _overLists.keys) {
+      _overLists[k] = _calcOver(sel, k);
+    }
   }
 
-  /// 자주 나온 순 상위 10개 중, 마지막 출현 후 지난 회차가 평균 간격보다 큰 것 (1번만 나온 건 평균이 없어 제외)
+  /// 자주 나온 순 상위 15개 중, 마지막 출현 후 지난 회차가 평균 간격보다 큰 것 (1번만 나온 건 평균이 없어 제외)
   List<Combo> _calcOver(Iterable<Draw> sel, int size) {
-    final top = LottoStats.combos(sel, size).take(10);
+    final top = LottoStats.combos(sel, size).take(_overTop);
     return [
       for (final c in top)
         if (c.avgGap != null && (_aTo - c.lastRound) > c.avgGap!) c,
     ];
-  }
-
-  void _changeOverSize(int size) {
-    setState(() {
-      _overSize = size;
-      _overList = _calcOver(_draws.where((d) => d.round >= _aFrom && d.round <= _aTo), size);
-    });
   }
 
   void _changeComboSize(int size) {
@@ -550,28 +545,21 @@ class _LottoHomePageState extends State<LottoHomePage> with WidgetsBindingObserv
   }
 
   Widget _overCard() {
-    final what = _overSize == 1 ? '번호' : '동반번호 $_overSize개';
     return _Section(
-      title: '자주 나오는 $what · 평균 간격 초과',
-      trailing: SegmentedButton<int>(
-        segments: const [
-          ButtonSegment(value: 1, label: Text('1개')),
-          ButtonSegment(value: 2, label: Text('2개')),
-          ButtonSegment(value: 3, label: Text('3개')),
-          ButtonSegment(value: 4, label: Text('4개')),
-        ],
-        selected: {_overSize},
-        showSelectedIcon: false,
-        style: const ButtonStyle(visualDensity: VisualDensity.compact),
-        onSelectionChanged: (s) => _changeOverSize(s.first),
-      ),
+      title: '자주 나오는 번호 · 평균 간격 초과',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text('자주 나온 순 상위 10개 중, 마지막 출현 후 지난 회차가 평균 간격보다 큰 것', style: _subStyle(context)),
-        ),
-        if (_overList.isEmpty) const Text('해당하는 항목이 없습니다'),
-        for (final c in _overList) _comboTile(c, tag: 'over$_overSize:'),
+        Text('자주 나온 순 상위 $_overTop개 중, 마지막 출현 후 지난 회차가 평균 간격보다 큰 것', style: _subStyle(context)),
+        for (final k in const [1, 2, 3, 4]) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 2),
+            child: Text(
+              '${k == 1 ? '번호 1개' : '동반번호 $k개'} (${_overLists[k]!.length}건)',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+          ),
+          if (_overLists[k]!.isEmpty) Text('해당하는 항목이 없습니다', style: _subStyle(context)),
+          for (final c in _overLists[k]!) _comboTile(c, tag: 'over$k:'),
+        ],
       ]),
     );
   }
